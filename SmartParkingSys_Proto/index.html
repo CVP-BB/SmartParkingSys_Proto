@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Parking System</title>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #e3f2fd;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+/* Main container */
+.container {
+  width: 100%;
+  max-width: 480px;
+  background: white;
+  padding: 30px;
+  border-radius: 15px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Title */
+h1 {
+  color: #1976d2;
+  margin-bottom: 5px;
+}
+
+p.subtitle {
+  font-size: 14px;
+  color: #444;
+  margin-top: 0;
+  margin-bottom: 25px;
+}
+
+/* Buttons */
+.btn {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  margin: 12px 0;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  color: white;
+  transition: 0.2s ease;
+}
+
+.btn-reg {
+  background: #1565c0;
+}
+.btn-reg:hover {
+  background: #0d47a1;
+}
+
+.btn-dash {
+  background: #2e7d32;
+}
+.btn-dash:hover {
+  background: #1b5e20;
+}
+
+/* Footer */
+footer {
+  margin-top: 20px;
+  font-size: 12px;
+  color: #555;
+}
+</style>
+
+</head>
+<body>
+
+<div class="container">
+  <h1>Smart Parking System</h1>
+  <p class="subtitle">Choose an action to continue</p>
+
+  <!-- Registration Button -->
+  <button class="btn btn-reg" onclick="location.href='registration.html'">
+    Vehicle Registration
+  </button>
+
+  <!-- Dashboard Button -->
+  <button class="btn btn-dash" onclick="location.href='dashboard.php'">
+    Security Dashboard
+  </button>
+
+  <footer>© 2025 Smart Parking Prototype</footer>
+</div>
+
+</body>
+</html>

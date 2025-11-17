@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Security QR Scanner</title>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background:#e3f2fd;
+  margin:0;
+  padding:0;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+
+h2 {
+  color:#1565c0;
+  margin:12px 0;
+}
+
+#reader {
+  width:320px;
+  max-width:100%;
+  margin-top:10px;
+  border-radius:10px;
+  overflow:hidden;
+}
+
+/* FIXED INFO BOX AT BOTTOM */
+#infoBox {
+  position:fixed;
+  bottom:0;
+  left:0;
+  width:100%;
+  background:white;
+  padding:14px;
+  border-radius:16px 16px 0 0;
+  box-shadow:0 -2px 12px rgba(0,0,0,0.25);
+  display:none;
+  z-index:999;
+}
+
+.info-row {
+  font-size:14px;
+  margin:4px 0;
+}
+
+.controls {
+  margin-top:10px;
+  display:flex;
+  gap:12px;
+  justify-content:center;
+}
+
+button {
+  padding:12px 16px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  font-size:16px;
+  color:white;
+  flex:1;
+}
+
+#entryBtn { background:#1565c0; }
+#exitBtn  { background:#2e7d32; }
+
+button:disabled {
+  opacity:0.6;
+  cursor:not-allowed;
+}
+
+footer {
+  margin-top:auto;
+  font-size:12px;
+  color:#444;
+  padding-bottom:12px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Security QR Scanner</h2>
+
+<div id="reader"></div>
+
+<!-- FIXED INFO BOX -->
+<div id="infoBox">
+  <div class="info-row"><b>Ticket ID:</b> <span id="ti"></span></div>
+  <div class="info-row"><b>Owner:</b> <span id="ow"></span></div>
+  <div class="info-row"><b>Plate:</b> <span id="pl"></span></div>
+  <div class="info-row"><b>Vehicle:</b> <span id="vt"></span></div>
+  <div class="info-row"><b>Floor:</b> <span id="fl"></span></div>
+  <div class="info-row"><b>Zone:</b> <span id="zc"></span> 
+    &nbsp;&nbsp; <b>Slot:</b> <span id="sn"></span>
+  </div>
+
+  <div class="controls">
+    <button id="entryBtn">Entry</button>
+    <button id="exitBtn">Exit</button>
+  </div>
+</div>
+
+<footer>© 2025 Smart Parking System</footer>
+
+<script>
+let lastPayload = null;
+
+const scanner = new Html5Qrcode("reader");
+
+scanner.start(
+  { facingMode: "environment" },
+  { fps: 10, qrbox: 250 },
+
+  // QR DETECTED
+  decoded => {
+    try {
+      const parsed = JSON.parse(decoded);
+      if (parsed.ticket_uid) populateInfo(parsed);
+      lastPayload = parsed;
+    } catch (e) {
+      lastPayload = { ticket_uid: decoded.trim() };
+      populateInfo(lastPayload, true);
+    }
+  },
+
+  err => {}
+);
+
+// SHOW INFO BOX
+function populateInfo(data, minimal=false) {
+  document.getElementById("infoBox").style.display = "block";
+
+  document.getElementById("ti").innerText = data.ticket_uid || "N/A";
+  document.getElementById("ow").innerText = minimal ? "N/A" : data.owner;
+  document.getElementById("pl").innerText = minimal ? "N/A" : data.plate;
+  document.getElementById("vt").innerText = minimal ? "N/A" : data.vtype;
+  document.getElementById("fl").innerText = minimal ? "N/A" : data.floor;
+  document.getElementById("zc").innerText = minimal ? "N/A" : data.zone_code;
+  document.getElementById("sn").innerText = minimal ? "N/A" : data.slot_number;
+}
+
+// SEND ENTRY/EXIT
+async function sendEvent(type) {
+  if (!lastPayload || !lastPayload.ticket_uid) {
+    alert("Scan a valid QR first.");
+    return;
+  }
+
+  if (!confirm(`Confirm mark ${type.toUpperCase()}?`)) return;
+
+  const fd = new FormData();
+  fd.append("ticket_uid", lastPayload.ticket_uid);
+  fd.append("event_type", type);
+
+  try {
+    const res = await fetch("api/logs.php", { method:"POST", body:fd });
+    const json = await res.json();
+
+    if (json.success) {
+      alert(`Marked as ${type.toUpperCase()}.`);
+    } else {
+      alert("Error: " + json.error);
+    }
+  } catch {
+    alert("Connection error.");
+  }
+}
+
+document.getElementById("entryBtn").onclick = () => sendEvent("entry");
+document.getElementById("exitBtn").onclick = () => sendEvent("exit");
+</script>
+
+</body>
+</html>
