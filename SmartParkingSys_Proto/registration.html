@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Vehicle Parking Registration</title>
+
+<style>
+/* Page layout */
+body {
+  font-family: Arial, sans-serif;
+  background-color: #e3f2fd;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  min-height:100vh;
+  margin:0;
+  padding:20px;
+  box-sizing:border-box;
+}
+
+/* Card */
+.container {
+  width: 100%;
+  max-width: 420px;
+  background: white;
+  padding:20px;
+  border-radius:12px;
+  box-shadow:0 5px 20px rgba(0,0,0,0.05);
+}
+
+/* Form */
+h1 { text-align:center; font-size:20px; margin:0 0 10px; }
+label { margin-top:10px; display:block; font-size:13px; }
+input, select, button { width:100%; padding:10px; margin-top:6px; border-radius:8px; border:1px solid #ccc; box-sizing:border-box; font-size:14px; }
+button { background:#1565c0; color:white; border:none; cursor:pointer; font-size:15px; }
+
+/* Clear button */
+button.clear-btn { background:#9e9e9e; margin-top:8px; }
+
+/* zones */
+.zones { display:grid; grid-template-columns: 1fr; gap:10px; margin-top:10px; }
+.zone-row { display:flex; gap:8px; align-items:center; }
+.zone { flex:1; border-radius:8px; padding:8px; border:1px solid #ccc; text-align:center; }
+.zone h4 { margin:0 0 8px; font-size:14px; color:#1976d2; }
+.zoneGrid { display:grid; grid-template-columns: repeat(5,1fr); gap:6px; }
+.slot { padding:8px; border-radius:6px; text-align:center; cursor:pointer; font-weight:bold; border:1px solid #ccc; user-select:none; }
+.slot.available { background:#a5d6a7; }    /* green */
+.slot.taken { background:#ef9a9a; cursor:not-allowed; } /* red */
+.slot.selected { background:#fff59d; outline:2px solid #fbc02d; } /* yellow */
+
+/* legend (registration) */
+.legend {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 13px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-box {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid #777;
+}
+.legend-available { background: #a5d6a7; }
+.legend-occupied { background: #ef9a9a; }
+.legend-selected { background: #fff59d; border-color: #fbc02d; }
+
+/* QR area */
+#qrcode { display:none; text-align:center; margin-top:12px; }
+#qrCanvas { border:1px solid #ddd; border-radius:6px; }
+
+/* Footer */
+footer { text-align:center; font-size:12px; margin-top:12px; color:#555; }
+
+/* Responsive tweaks */
+@media (max-width:420px) {
+  .zoneGrid { grid-template-columns: repeat(5, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Vehicle Parking Registration</h1>
+
+  <form id="parkingForm">
+    <label>Owner Name</label>
+    <input id="owner" required placeholder="Full name">
+
+    <label>Plate Number</label>
+    <input id="plate" required placeholder="ABC-1234">
+
+    <label>Phone Number</label>
+    <input id="phone" type="tel" placeholder="Optional">
+
+    <label>Vehicle Type</label>
+    <select id="vtype" required>
+      <option value="">Select type</option>
+      <option value="Car">Car</option>
+      <option value="Motorcycle">Motorcycle</option>
+      <option value="Truck">Truck</option>
+    </select>
+
+    <label>Floor</label>
+    <select id="floor" required>
+      <option value="">Select Floor</option>
+      <option value="Floor 1">Floor 1</option>
+      <option value="Floor 2">Floor 2</option>
+    </select>
+
+    <label>Select Slot (Zones per floor: Zone A = Car (10), Zone B = Motorcycle (10), Zone C = Truck (10))</label>
+    <div id="slotsContainer" class="zones"></div>
+
+    <!-- legend -->
+    <div class="legend" id="slotsLegend">
+      <div class="legend-item"><div class="legend-box legend-available"></div> Available</div>
+      <div class="legend-item"><div class="legend-box legend-occupied"></div> Occupied</div>
+      <div class="legend-item"><div class="legend-box legend-selected"></div> Selected</div>
+    </div>
+
+    <input type="hidden" id="zone_code">
+    <input type="hidden" id="slot_number">
+
+    <button type="submit" id="submitBtn">Generate Ticket & QR</button>
+    <button type="button" class="clear-btn" onclick="clearForm()">Clear All Fields</button>
+  </form>
+
+  <div id="qrcode">
+    <canvas id="qrCanvas" width="220" height="220"></canvas><br>
+    <button id="downloadBtn">Download Ticket PDF</button>
+    <p style="font-size:12px;color:#333;margin-top:8px;">Ticket generated — submission disabled to prevent duplicates. Use Clear All to register another vehicle.</p>
+  </div>
+
+  <footer>© 2025 Smart Parking Prototype</footer>
+</div>
+
+<!-- QR & PDF libraries -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<script>
+const API = 'api/tickets.php';
+const slotsContainer = document.getElementById('slotsContainer');
+const floorSel = document.getElementById('floor');
+const vtypeSel = document.getElementById('vtype');
+const submitBtn = document.getElementById('submitBtn');
+let currentTicket = null;
+
+// mapping zone code -> vehicle type
+const zoneMap = { 'A': 'Car', 'B': 'Motorcycle', 'C': 'Truck' };
+
+floorSel.addEventListener('change', renderZones);
+vtypeSel.addEventListener('change', renderZones);
+
+// On load show placeholder
+slotsContainer.innerHTML = '<div style="text-align:center;color:#777;">Select floor and vehicle type</div>';
+
+async function renderZones() {
+  slotsContainer.innerHTML = '';
+  const floor = floorSel.value;
+  const vtype = vtypeSel.value;
+
+  if (!floor) {
+    slotsContainer.innerHTML = '<div style="text-align:center;color:#777;">Select floor and vehicle type</div>';
+    return;
+  }
+
+  // fetch existing tickets
+  let tickets = [];
+  try {
+    const res = await fetch(API);
+    tickets = await res.json();
+  } catch (e) {
+    console.error("Failed to fetch slots:", e);
+  }
+
+  // Build 3 zone blocks: A, B, C
+  ['A','B','C'].forEach(zoneCode => {
+    const zoneDiv = document.createElement('div');
+    zoneDiv.className = 'zone';
+    const zoneTitle = document.createElement('h4');
+    zoneTitle.innerText = `Zone ${zoneCode} — ${zoneMap[zoneCode]}`;
+    zoneDiv.appendChild(zoneTitle);
+
+    const grid = document.createElement('div');
+    grid.className = 'zoneGrid';
+
+    // taken slots for this floor/zone
+    const takenSlots = tickets
+      .filter(t => t.floor === floor && (t.zone_code === zoneCode || t.zone === `Zone ${zoneCode} - Slot ${t.slot_number}`) && t.active == 1)
+      .map(t => parseInt(t.slot_number));
+
+    for (let s = 1; s <= 10; s++) {
+      const slotEl = document.createElement('div');
+      slotEl.className = 'slot';
+      slotEl.textContent = s;
+
+      if (takenSlots.includes(s)) {
+        slotEl.classList.add('taken');
+      } else {
+        slotEl.classList.add('available');
+        // if vehicle type selected and doesn't match, disable
+        if (vtype && vtype !== zoneMap[zoneCode]) {
+          slotEl.style.opacity = 0.6;
+          slotEl.title = 'Select matching vehicle type for this zone';
+        } else {
+          slotEl.onclick = () => {
+            // deselect all other available slots
+            document.querySelectorAll('.slot').forEach(x => x.classList.remove('selected'));
+            slotEl.classList.add('selected');
+            document.getElementById('zone_code').value = zoneCode;
+            document.getElementById('slot_number').value = s;
+          };
+        }
+      }
+
+      grid.appendChild(slotEl);
+    }
+
+    zoneDiv.appendChild(grid);
+    slotsContainer.appendChild(zoneDiv);
+  });
+}
+
+// form submit
+document.getElementById('parkingForm').onsubmit = async (e) => {
+  e.preventDefault();
+  if (currentTicket) return alert('Ticket already generated. Clear form to create a new one.');
+
+  const owner = document.getElementById('owner').value.trim();
+  const plate = document.getElementById('plate').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  const vtype = vtypeSel.value;
+  const floor = floorSel.value;
+  const zone_code = document.getElementById('zone_code').value;
+  const slot_number = parseInt(document.getElementById('slot_number').value || 0);
+
+  if (!owner || !plate || !vtype || !floor || !zone_code || !slot_number) {
+    return alert('Please complete all fields and select an available slot.');
+  }
+
+  const fd = new FormData();
+  fd.append('owner', owner);
+  fd.append('plate', plate);
+  fd.append('vtype', vtype);
+  fd.append('floor', floor);
+  fd.append('zone_code', zone_code);
+  fd.append('slot_number', slot_number);
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Submitting...';
+
+  try {
+    const res = await fetch(API, { method: 'POST', body: fd });
+    const json = await res.json();
+    if (json.success) {
+      currentTicket = json.ticket;
+      currentTicket.phone = phone;
+      generateQR(currentTicket);
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Ticket Generated';
+    } else {
+      alert('Error: ' + (json.error || 'Unknown error'));
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Generate Ticket & QR';
+      // re-render slots in case they changed
+      renderZones();
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Network error while creating ticket');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Generate Ticket & QR';
+    renderZones();
+  }
+};
+
+// QR generation
+function generateQR(t) {
+  const payload = {
+    ticket_uid: t.ticket_uid,
+    owner: t.owner,
+    plate: t.plate,
+    vtype: t.vtype,
+    floor: t.floor,
+    zone_code: t.zone_code,
+    slot_number: t.slot_number
+  };
+  const text = JSON.stringify(payload);
+  QRCode.toCanvas(document.getElementById('qrCanvas'), text, { width: 220 }, function (err) {
+    if (err) console.error(err);
+    document.getElementById('qrcode').style.display = 'block';
+    document.getElementById('downloadBtn').onclick = () => downloadPDF(t);
+    // scroll to QR for mobile
+    document.getElementById('qrcode').scrollIntoView({ behavior: 'smooth' });
+  });
+}
+
+// download PDF
+function downloadPDF(t) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(16);
+  doc.text('Parking Ticket', 20, 20);
+  doc.setFontSize(11);
+  doc.text(`Ticket ID: ${t.ticket_uid}`, 20, 34);
+  doc.text(`Owner: ${t.owner}`, 20, 44);
+  if (t.phone) doc.text(`Phone: ${t.phone}`, 20, 52);
+  doc.text(`Plate: ${t.plate}`, 20, 60);
+  doc.text(`Vehicle: ${t.vtype}`, 20, 68);
+  doc.text(`Floor: ${t.floor}`, 20, 76);
+  doc.text(`Zone: Zone ${t.zone_code}`, 20, 84);
+  doc.text(`Slot: ${t.slot_number}`, 20, 92);
+  const qr = document.getElementById('qrCanvas').toDataURL('image/png');
+  doc.addImage(qr, 'PNG', 130, 20, 60, 60);
+  doc.save(`${t.ticket_uid}.pdf`);
+}
+
+// clear all fields and allow new registration
+function clearForm() {
+  document.getElementById('parkingForm').reset();
+  document.getElementById('zone_code').value = '';
+  document.getElementById('slot_number').value = '';
+  slotsContainer.innerHTML = '<div style="text-align:center;color:#777;">Select floor and vehicle type</div>';
+  document.getElementById('qrcode').style.display = 'none';
+  currentTicket = null;
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Generate Ticket & QR';
+}
+
+// initial load of zones (if floor selected or vehicle pre-selected)
+renderZones();
+</script>
+</body>
+</html>
